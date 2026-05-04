@@ -14,6 +14,7 @@ import {
   getSessions,
   getStatus,
   getTasks,
+  setConfig,
 } from './openclaw.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -136,6 +137,23 @@ const server = http.createServer(async (req, res) => {
 
       if (action === 'refresh') {
         send(res, 200, 'application/json; charset=utf-8', JSON.stringify({ ok: true }));
+        return;
+      }
+
+      if (action === 'config-set') {
+        const cfgPath = String(body.path || '').trim();
+        const cfgValue = String(body.value ?? '').trim();
+        const allowed = ['gateway.port', 'gateway.bind', 'gateway.auth.mode', 'controlUi.allowInsecureAuth'];
+        if (!allowed.includes(cfgPath)) {
+          send(res, 400, 'application/json; charset=utf-8', JSON.stringify({ error: `Not allowed: ${cfgPath}` }));
+          return;
+        }
+        const result = await setConfig(cfgPath, cfgValue);
+        if (result.error) {
+          send(res, 500, 'application/json; charset=utf-8', JSON.stringify({ error: result.error, stderr: result.stderr }));
+          return;
+        }
+        send(res, 200, 'application/json; charset=utf-8', JSON.stringify({ ok: true, stdout: result.stdout }));
         return;
       }
 

@@ -182,19 +182,29 @@ function renderLogs() {
   `;
 }
 
+function cfgRow(label, path, value) {
+  const isDanger = path === 'controlUi.allowInsecureAuth';
+  return `<tr>
+    <th>${esc(label)}${isDanger ? ' <span class="error" title="修改此项存在安全风险">⚠</span>' : ''}</th>
+    <td><input type="text" class="mono" data-cfg-path="${esc(path)}" value="${esc(value ?? '')}" style="min-width:120px;width:100%"></td>
+    <td><button class="btn ghost" data-cfg-save="${esc(path)}" style="padding:6px 10px">保存</button></td>
+  </tr>`;
+}
+
 function renderConfig() {
   const cfg = state.data?.config || {};
   const status = state.data?.status || {};
   el('section-config').innerHTML = `
     <div class="card">
       <h2>配置</h2>
+      <div class="small" style="margin-bottom:12px">部分配置保存后需重启 Gateway 生效。</div>
       <table class="table">
-        <tr><th>gateway.port</th><td class="mono">${esc(cfg.gatewayPort ?? '-')}</td></tr>
-        <tr><th>gateway.bind</th><td class="mono">${esc(cfg.gatewayBind ?? '-')}</td></tr>
-        <tr><th>gateway.auth.mode</th><td class="mono">${esc(cfg.authMode ?? '-')}</td></tr>
-        <tr><th>controlUi.allowInsecureAuth</th><td class="mono">${esc(cfg.allowInsecureAuth ?? '-')}</td></tr>
-        <tr><th>gateway.url</th><td class="mono">${esc(status?.gateway?.probeUrl ?? status?.gateway?.url ?? '-')}</td></tr>
-        <tr><th>gateway.service</th><td>${esc(status?.gatewayService?.runtimeShort ?? status?.gatewayService?.runtime?.status ?? '-')}</td></tr>
+        ${cfgRow('gateway.port', 'gateway.port', cfg.gatewayPort)}
+        ${cfgRow('gateway.bind', 'gateway.bind', cfg.gatewayBind)}
+        ${cfgRow('gateway.auth.mode', 'gateway.auth.mode', cfg.authMode)}
+        ${cfgRow('controlUi.allowInsecureAuth', 'controlUi.allowInsecureAuth', cfg.allowInsecureAuth)}
+        <tr><th>gateway.url</th><td class="mono" colspan="2">${esc(status?.gateway?.probeUrl ?? status?.gateway?.url ?? '-')}</td></tr>
+        <tr><th>gateway.service</th><td colspan="2">${esc(status?.gatewayService?.runtimeShort ?? status?.gatewayService?.runtime?.status ?? '-')}</td></tr>
       </table>
       ${cfg.error ? `<div style="height:12px"></div><div class="empty">配置读取失败：${esc(cfg.error)}</div>` : ''}
     </div>
@@ -327,6 +337,22 @@ async function actionInit() {
     btn.dataset.tab = key;
     btn.addEventListener('click', () => setTab(key));
     el('tabs').appendChild(btn);
+  });
+
+  el('section-config').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-cfg-save]');
+    if (!btn) return;
+    const cfgPath = btn.dataset.cfgSave;
+    const input = el('section-config').querySelector(`[data-cfg-path="${cfgPath}"]`);
+    if (!input) return;
+    try {
+      await runAction('config-set', { path: cfgPath, value: input.value.trim() });
+      state.actionNote = `${cfgPath} 已保存（部分配置需重启 Gateway 生效）`;
+      loadData();
+    } catch (err) {
+      state.actionNote = `保存失败：${err.message || String(err)}`;
+      render();
+    }
   });
 
   el('section-dashboard').addEventListener('click', async (e) => {
