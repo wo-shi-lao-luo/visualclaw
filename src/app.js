@@ -102,7 +102,17 @@ function renderDashboard() {
   const sessions = listOf(data.sessions).slice(0, 6);
   const tasks = listOf(data.tasks).slice(0, 6);
   const logs = listOf(data.logs).slice(0, 6);
+  const connected = Boolean(gw?.rpc?.ok || status?.gateway?.reachable);
   el('section-dashboard').innerHTML = `
+    <div class="card" style="margin-bottom:0">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <button class="btn primary" data-dash-action="reconnect">${connected ? '重连' : '连接'}</button>
+        <button class="btn" data-dash-action="sessions">打开会话</button>
+        <button class="btn" data-dash-action="tasks">打开任务</button>
+        <button class="btn" data-dash-action="logs">打开日志</button>
+        <button class="btn" data-dash-action="config">打开配置</button>
+      </div>
+    </div>
     <div class="grid-2">
       <div class="card">
         <h2>总览</h2>
@@ -318,6 +328,26 @@ async function actionInit() {
     btn.addEventListener('click', () => setTab(key));
     el('tabs').appendChild(btn);
   });
+
+  el('section-dashboard').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-dash-action]');
+    if (!btn) return;
+    const action = btn.dataset.dashAction;
+    if (action === 'reconnect') {
+      try {
+        state.actionNote = '正在重连…';
+        render();
+        await runAction('discover');
+        await loadData();
+      } catch (err) {
+        state.actionNote = `重连失败：${err.message || String(err)}`;
+        render();
+      }
+    } else {
+      setTab(action);
+    }
+  });
+
   await loadData();
   setInterval(loadData, 15000);
 }
