@@ -6,6 +6,7 @@ node_modules/
 data/
 
 # AI dev tools
+CLAUDE.md
 .claude/
 .cursor/
 .aider*
