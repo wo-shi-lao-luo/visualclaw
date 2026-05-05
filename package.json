@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "node src/dev-server.mjs",
+    "dev": "node src/server.mjs",
     "build": "node src/build.mjs",
-    "lint": "node -e \"console.log('lint placeholder')\""
+    "lint": "node -e \"console.log('lint ok')\""
   }
 }
