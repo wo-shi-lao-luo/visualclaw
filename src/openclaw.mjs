@@ -27,7 +27,10 @@ async function runLocal(args, { timeoutMs = 12000 } = {}) {
 }
 
 async function runViaWsl(args, { timeoutMs = 12000 } = {}) {
-  const { stdout, stderr } = await execFileAsync('wsl.exe', ['--', 'openclaw', ...args], {
+  const shellCmd = ['openclaw', ...args]
+    .map((a) => `'${String(a).replace(/'/g, "'\\''")}'`)
+    .join(' ');
+  const { stdout, stderr } = await execFileAsync('wsl.exe', ['--', 'bash', '-lc', shellCmd], {
     timeout: timeoutMs,
     maxBuffer: 5 * 1024 * 1024,
     windowsHide: true,
