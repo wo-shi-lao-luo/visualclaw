@@ -329,8 +329,11 @@ document.querySelectorAll('[data-action]').forEach((btn) => {
         return loadData();
       }
       if (!confirm(`确认执行：${action} ?`)) return;
+      state.actionNote = `${action} 执行中…`;
+      render();
       const result = await runAction(action);
       state.actionNote = result?.stderr || result?.stdout || `${action} 已执行`;
+      render();
       setTimeout(loadData, 1200);
     } catch (err) {
       state.actionNote = `${action} 失败：${err.message || String(err)}`;
