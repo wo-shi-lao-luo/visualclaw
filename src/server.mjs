@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  configureRunner,
   gatewayRestart,
   gatewayStart,
   gatewayStop,
@@ -59,8 +60,49 @@ async function saveSettings(next) {
   await writeFile(settingsPath, JSON.stringify(next, null, 2));
 }
 
+function isSafeProbeHost(hostname) {
+  if (hostname === '169.254.169.254') return false; // cloud metadata
+  return (
+    hostname === 'localhost' ||
+    /^127\./.test(hostname) ||
+    /^10\./.test(hostname) ||
+    /^192\.168\./.test(hostname) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
+  );
+}
+
+function probeManualTarget(target) {
+  return new Promise((resolve) => {
+    if (!target) return resolve(null);
+    let url, parsed;
+    try {
+      url = target.startsWith('http') ? target : `http://${target}`;
+      parsed = new URL(url);
+    } catch {
+      return resolve(null);
+    }
+    if (!isSafeProbeHost(parsed.hostname)) return resolve(null);
+
+    let done = false;
+    const finish = (result) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    const timer = setTimeout(() => { req.destroy(); finish(null); }, 3000);
+    const req = http.get(
+      { hostname: parsed.hostname, port: parsed.port || 80, path: '/' },
+      (res) => { res.resume(); finish(url); },
+    );
+    req.on('error', () => finish(null));
+  });
+}
+
 async function collectBootstrap() {
-  const [status, gatewayStatus, sessions, tasks, logs, discovery, config, settings] = await Promise.all([
+  const settings = await readSettings();
+
+  const [status, gatewayStatus, sessions, tasks, logs, discovery, config, manualProbeUrl] = await Promise.all([
     getStatus().catch((error) => ({ error: String(error?.message || error) })),
     getGatewayStatus().catch((error) => ({ error: String(error?.message || error) })),
     getSessions().catch((error) => ({ sessions: [], stores: [], count: 0, error: String(error?.message || error) })),
@@ -68,8 +110,13 @@ async function collectBootstrap() {
     getLogs().catch((error) => ({ error: String(error?.message || error), logs: [] })),
     getDiscovery().catch((error) => ({ beacons: [], count: 0, error: String(error?.message || error) })),
     getConfig().catch((error) => ({ error: String(error?.message || error) })),
-    readSettings(),
+    probeManualTarget(settings.manualTarget),
   ]);
+
+  const existingBeacons = Array.isArray(discovery.beacons) ? discovery.beacons : [];
+  const finalBeacons = manualProbeUrl && !existingBeacons.some((b) => (b.url || b.address) === manualProbeUrl)
+    ? [{ name: '手动目标', url: manualProbeUrl, manual: true }, ...existingBeacons]
+    : existingBeacons;
 
   return {
     timestamp: Date.now(),
@@ -79,7 +126,7 @@ async function collectBootstrap() {
     sessions,
     tasks,
     logs,
-    discovery,
+    discovery: { ...discovery, beacons: finalBeacons },
     config,
     settings,
   };
@@ -174,7 +221,8 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(port, async () => {
-  envType = await detectEnv();
+envType = await detectEnv();
+configureRunner(envType);
+server.listen(port, () => {
   console.log(`VisualClaw running at http://localhost:${port} [env: ${envType}]`);
 });

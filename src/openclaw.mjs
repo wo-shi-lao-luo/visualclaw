@@ -3,8 +3,41 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
+let _useWsl = false;
+let _configured = false;
+
+export function configureRunner(envType) {
+  if (_configured) return;
+  _configured = true;
+  _useWsl = envType === 'WINDOWS';
+}
+
 function errorMessage(error) {
   return String(error?.message || error || 'Unknown error');
+}
+
+async function runLocal(args, { timeoutMs = 12000 } = {}) {
+  const { stdout, stderr } = await execFileAsync('openclaw', args, {
+    timeout: timeoutMs,
+    maxBuffer: 5 * 1024 * 1024,
+    windowsHide: true,
+    env: process.env,
+  });
+  return { stdout: stdout ?? '', stderr: stderr ?? '' };
+}
+
+async function runViaWsl(args, { timeoutMs = 12000 } = {}) {
+  const { stdout, stderr } = await execFileAsync('wsl.exe', ['--', 'openclaw', ...args], {
+    timeout: timeoutMs,
+    maxBuffer: 5 * 1024 * 1024,
+    windowsHide: true,
+    env: process.env,
+  });
+  return { stdout: stdout ?? '', stderr: stderr ?? '' };
+}
+
+export async function runOpenClaw(args, options) {
+  return _useWsl ? runViaWsl(args, options) : runLocal(args, options);
 }
 
 async function safeRunOpenClaw(args, options) {
@@ -13,17 +46,6 @@ async function safeRunOpenClaw(args, options) {
   } catch (error) {
     return { stdout: '', stderr: errorMessage(error), error: errorMessage(error) };
   }
-}
-
-export async function runOpenClaw(args, { timeoutMs = 12000 } = {}) {
-  const { stdout, stderr } = await execFileAsync('openclaw', args, {
-    timeout: timeoutMs,
-    maxBuffer: 5 * 1024 * 1024,
-    windowsHide: true,
-    env: process.env,
-  });
-
-  return { stdout: stdout ?? '', stderr: stderr ?? '' };
 }
 
 export function parseJson(text, fallback = null) {
