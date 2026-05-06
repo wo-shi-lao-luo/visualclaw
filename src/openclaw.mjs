@@ -30,7 +30,7 @@ async function runViaWsl(args, { timeoutMs = 12000 } = {}) {
   const shellCmd = ['openclaw', ...args]
     .map((a) => `'${String(a).replace(/'/g, "'\\''")}'`)
     .join(' ');
-  const { stdout, stderr } = await execFileAsync('wsl.exe', ['--', 'bash', '-lc', shellCmd], {
+  const { stdout, stderr } = await execFileAsync('wsl.exe', ['--', 'bash', '-ilc', shellCmd], {
     timeout: timeoutMs,
     maxBuffer: 5 * 1024 * 1024,
     windowsHide: true,
