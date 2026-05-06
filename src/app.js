@@ -297,9 +297,19 @@ el('searchBox').addEventListener('input', (e) => {
 });
 
 el('saveTargetBtn').addEventListener('click', async () => {
+  const target = el('manualTarget').value.trim();
+  if (target) {
+    try {
+      new URL(target.startsWith('http') ? target : `http://${target}`);
+    } catch {
+      state.actionNote = '连接目标格式无效，请输入有效地址（例如 127.0.0.1:18789）';
+      render();
+      return;
+    }
+  }
   try {
     state.actionNote = '已保存连接目标';
-    await runAction('save-target', { target: el('manualTarget').value.trim() });
+    await runAction('save-target', { target });
     await loadData();
   } catch (err) {
     state.actionNote = `保存失败：${err.message || String(err)}`;
