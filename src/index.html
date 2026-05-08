@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VisualClaw</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <div class="brand">
+        <div class="logo">VC</div>
+        <div>
+          <h1>VisualClaw</h1>
+          <p>OpenClaw 桌面 MVP</p>
+        </div>
+      </div>
+      <div class="nav" id="nav"></div>
+      <div class="card" style="margin-top:16px;">
+        <h3>连接目标</h3>
+        <div class="small">兜底目标保存在本地，不会改写 OpenClaw 配置。</div>
+        <div style="height:10px"></div>
+        <input id="manualTarget" type="text" placeholder="ws://127.0.0.1:18789" />
+        <div style="height:10px"></div>
+        <button class="btn primary" id="saveTargetBtn">保存目标</button>
+      </div>
+    </aside>
+    <main class="main">
+      <div class="topbar">
+        <div class="left">
+          <div class="chip" id="connChip"><span class="dot" id="connDot"></span><span id="connText">加载中</span></div>
+          <div class="chip" id="gwChip">Gateway: <span class="mono" id="gwUrl">-</span></div>
+          <div class="chip">Sessions: <span class="mono" id="sessionCount">0</span></div>
+          <div class="chip">Tasks: <span class="mono" id="taskCount">0</span></div>
+        </div>
+        <div class="right">
+          <input id="searchBox" type="text" placeholder="搜索会话 / 任务 / 日志 / 配置" />
+          <button class="btn" data-action="refresh">刷新</button>
+          <button class="btn" data-action="discover">发现</button>
+          <button class="btn" data-action="restart">重启 Gateway</button>
+          <button class="btn" data-action="start">启动</button>
+          <button class="btn" data-action="stop">停止</button>
+        </div>
+      </div>
+      <div class="content">
+        <section class="hero" id="hero"></section>
+        <section class="card">
+          <div class="tabs" id="tabs"></div>
+        </section>
+        <section class="section active" id="section-dashboard"></section>
+        <section class="section" id="section-sessions"></section>
+        <section class="section" id="section-tasks"></section>
+        <section class="section" id="section-logs"></section>
+        <section class="section" id="section-config"></section>
+        <section class="section" id="section-connections"></section>
+      </div>
+      <div class="footer" id="footer"></div>
+    </main>
+  </div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

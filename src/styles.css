@@ -1,0 +1,51 @@
+:root { color-scheme: dark; --bg:#0b1020; --panel:#121a2e; --panel-2:#171f35; --line:#263152; --text:#e8eefc; --muted:#91a0c9; --ok:#2dd4bf; --warn:#fbbf24; --bad:#fb7185; --accent:#8b5cf6; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: radial-gradient(circle at top, #101935, var(--bg)); color: var(--text); }
+button, input, select { font: inherit; }
+.app { min-height: 100vh; display: grid; grid-template-columns: 240px 1fr; }
+.side { border-right: 1px solid var(--line); background: rgba(8,12,24,.72); padding: 18px; backdrop-filter: blur(14px); }
+.brand { display:flex; gap:12px; align-items:center; margin-bottom: 20px; }
+.logo { width:44px; height:44px; border-radius: 14px; display:grid; place-items:center; background: linear-gradient(135deg, var(--accent), #22c55e); font-weight: 800; }
+.brand h1 { margin:0; font-size: 18px; }
+.brand p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.nav { display:flex; flex-direction: column; gap: 8px; }
+.nav button { text-align:left; border:1px solid transparent; background: transparent; color: var(--text); padding: 12px 14px; border-radius: 12px; cursor:pointer; }
+.nav button.active, .nav button:hover { background: var(--panel); border-color: var(--line); }
+.main { display:flex; flex-direction: column; min-width: 0; }
+.topbar { display:flex; gap: 12px; align-items:center; justify-content: space-between; padding: 18px 22px; border-bottom:1px solid var(--line); background: rgba(10,15,29,.72); backdrop-filter: blur(14px); position: sticky; top: 0; z-index: 10; }
+.topbar .left, .topbar .right { display:flex; gap: 10px; align-items:center; flex-wrap: wrap; }
+.chip { display:inline-flex; align-items:center; gap:6px; border-radius: 999px; padding: 7px 11px; background: var(--panel); border: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.dot { width:8px; height:8px; border-radius: 999px; background: var(--warn); }
+.dot.ok { background: var(--ok); }
+.dot.bad { background: var(--bad); }
+.btn { border:1px solid var(--line); background: linear-gradient(180deg, #1a2340, #141c32); color: var(--text); border-radius: 12px; padding: 10px 14px; cursor:pointer; }
+.btn:hover { border-color:#40507d; }
+.btn.primary { background: linear-gradient(180deg, #7c3aed, #5b21b6); }
+.btn.ghost { background: transparent; }
+.content { padding: 22px; display:grid; gap: 16px; }
+.hero { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.card { background: linear-gradient(180deg, rgba(23,31,53,.96), rgba(18,26,46,.96)); border:1px solid var(--line); border-radius: 18px; padding: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.22); }
+.card h2, .card h3 { margin: 0 0 8px; }
+.stat { display:flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.stat strong { font-size: 28px; }
+.muted { color: var(--muted); }
+.grid-2 { display:grid; grid-template-columns: 1.5fr 1fr; gap: 16px; }
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table th, .table td { border-bottom: 1px solid var(--line); padding: 10px 8px; vertical-align: top; text-align:left; }
+.table th { color: var(--muted); font-weight: 600; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.tabs { display:flex; gap: 8px; flex-wrap: wrap; }
+.tabs button { border:1px solid var(--line); background: transparent; color: var(--text); padding: 8px 12px; border-radius: 999px; cursor:pointer; }
+.tabs button.active { background: var(--panel-2); }
+.section { display:none; }
+.section.active { display:block; }
+.toolbar { display:flex; gap: 8px; flex-wrap: wrap; align-items:center; }
+input[type="text"] { background: #0f172a; color: var(--text); border:1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 240px; }
+.list { display:grid; gap: 10px; }
+.item { border:1px solid var(--line); background: rgba(12,17,31,.8); border-radius: 14px; padding: 12px; }
+.cols { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.small { font-size: 12px; color: var(--muted); }
+.empty { padding: 18px; color: var(--muted); border:1px dashed var(--line); border-radius: 14px; }
+.footer { padding: 0 22px 22px; color: var(--muted); font-size: 12px; }
+.error { color: #fecaca; }
+@media (max-width: 1100px) { .app { grid-template-columns: 1fr; } .side { border-right: none; border-bottom: 1px solid var(--line); } .hero, .grid-2, .cols { grid-template-columns: 1fr; } .topbar { position: static; } }

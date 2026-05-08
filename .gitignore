@@ -1,3 +1,26 @@
 dist/
 node_modules/
 .DS_Store
+
+# data / local settings
+data/
+
+# AI dev tools
+CLAUDE.md
+.claude/
+.cursor/
+.aider*
+.copilot/
+.continue/
+
+# cache
+.cache/
+*.cache
+.npm/
+.pnpm-store/
+.yarn/
+
+# env
+.env
+.env.*
+!.env.example
