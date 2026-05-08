@@ -205,3 +205,12 @@ export async function skillsInstall(slug, agentId) {
   if (agentId) args.push('--agent', agentId);
   return safeRunOpenClaw(args, { timeoutMs: 60000 });
 }
+
+export async function runAgent(agentId, message) {
+  const args = ['agent', '--message', message, '--agent', agentId || 'main', '--json'];
+  const { stdout, error } = await safeRunOpenClaw(args, { timeoutMs: 60000 });
+  if (error) return { text: null, error };
+  const data = parseJson(stdout, {});
+  const text = data?.payloads?.[0]?.text || null;
+  return { text, error: text ? null : '未收到回复' };
+}

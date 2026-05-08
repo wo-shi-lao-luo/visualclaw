@@ -18,6 +18,7 @@ import {
   getSkills,
   getStatus,
   getTasks,
+  runAgent,
   setConfig,
   skillsInstall,
   skillsUpdateAll,
@@ -177,22 +178,20 @@ function parseChatResponse(text) {
   return { content: text.replace(/<actions>[\s\S]*?<\/actions>/g, '').trim(), actions };
 }
 
-async function callClaude(systemPrompt, messages) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return { content: 'Chat 功能需要配置 ANTHROPIC_API_KEY 环境变量。', actions: [] };
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: messages.map((m) => ({ role: m.role, content: String(m.content) })),
-    }),
-  });
-  if (!res.ok) throw new Error(`Claude API ${res.status}`);
-  const data = await res.json();
-  return parseChatResponse(data.content?.[0]?.text || '抱歉，无法获取回复。');
+async function callOpenClaw(systemPrompt, messages, agentId = 'main') {
+  const history = messages.slice(0, -1).slice(-6);
+  const lastUser = messages[messages.length - 1];
+  const userText = String(lastUser?.content || '');
+
+  let fullMessage = systemPrompt + '\n\n';
+  if (history.length) {
+    fullMessage += '对话历史：\n' + history.map((m) => `${m.role === 'user' ? '用户' : '助手'}：${m.content}`).join('\n') + '\n\n';
+  }
+  fullMessage += `用户：${userText}`;
+
+  const result = await runAgent(agentId, fullMessage);
+  if (result.error && !result.text) throw new Error(result.error);
+  return parseChatResponse(result.text || '抱歉，无法获取回复。');
 }
 
 async function readBody(req) {
@@ -309,12 +308,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/api/chat') {
       const body = await readBody(req);
-      const { message, history = [], context } = body;
+      const { message, history = [], context, agentId } = body;
       if (!message) { send(res, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'message required' })); return; }
       try {
         const systemPrompt = buildChatSystemPrompt(context);
         const messages = [...history.slice(-10), { role: 'user', content: String(message) }];
-        const result = await callClaude(systemPrompt, messages);
+        const result = await callOpenClaw(systemPrompt, messages, agentId || 'main');
         send(res, 200, 'application/json; charset=utf-8', JSON.stringify(result));
       } catch (error) {
         send(res, 500, 'application/json; charset=utf-8', JSON.stringify({ content: `调用失败：${error?.message || error}`, actions: [] }));
