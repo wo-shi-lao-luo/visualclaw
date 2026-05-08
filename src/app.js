@@ -13,6 +13,8 @@ const state = {
   skillsLoading: false,
   agentBindings: null,
   agentBindingsLoading: false,
+  logLevel: 'all',
+  taskFilter: 'all',
 };
 
 const tabs = [
@@ -32,6 +34,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]+/g, (c) => ({ '&': '&amp;', '
 const listOf = (value) => Array.isArray(value) ? value : Array.isArray(value?.sessions) ? value.sessions : Array.isArray(value?.tasks) ? value.tasks : Array.isArray(value?.logs) ? value.logs : [];
 const countOf = (value, fallback = 0) => Number(value?.count ?? listOf(value).length ?? fallback ?? 0);
 const textOr = (...values) => values.find((value) => value != null && value !== '') ?? '-';
+const STATUS_MAP = { connected: '在线', connecting: '连接中', read_only: '只读', busy: '忙碌中', failed: '失败', paused: '已暂停', running: '运行中', pending: '等待中', blocked: '已卡住', done: '已完成', error: '错误', active: '活跃', ok: '正常' };
+const humanStatus = (s) => STATUS_MAP[String(s || '').toLowerCase()] || String(s || '-');
 
 function setTab(name) {
   state.activeTab = name;
@@ -106,62 +110,76 @@ function renderTaskItem(t) {
   return `<div class="item"><div><strong>${esc(t.name || t.id || 'task')}</strong></div><div class="small">${esc(t.status || '-')} · ${esc(t.runtime || '')} · ${esc(t.message || t.title || '')}</div></div>`;
 }
 function renderLogItem(l) {
-  return `<div class="item"><div class="small mono">${esc(l.time || '')} · ${esc(l.level || '')} · ${esc(l.subsystem || '')}</div><div>${esc(l.message || '')}</div></div>`;
+  const lvl = String(l.level || '').toLowerCase();
+  const isErr = /error|fatal/.test(lvl);
+  const isWarn = /warn/.test(lvl);
+  const levelClass = isErr ? 'log-level-bad' : isWarn ? 'log-level-warn' : 'muted';
+  const rowClass = isErr ? ' log-error' : isWarn ? ' log-warn' : '';
+  return `<div class="item${rowClass}"><div class="small mono"><span class="${levelClass}">${esc(l.level || 'info')}</span> · ${esc(l.time || '')} · ${esc(l.subsystem || '')}</div><div>${esc(l.message || '')}</div></div>`;
 }
 
 function renderDashboard() {
   const data = state.data || {};
   const gw = data.gatewayStatus || {};
   const status = data.status || {};
-  const settings = data.settings || {};
-  const discovery = data.discovery || {};
-  const envType = data.envType || 'UNKNOWN';
-  const envHint = envType === 'WSL' ? 'WSL 本机回环' : envType === 'WINDOWS' ? 'Windows 本机' : '本机';
-  const sessions = listOf(data.sessions).slice(0, 6);
-  const tasks = listOf(data.tasks).slice(0, 6);
-  const logs = listOf(data.logs).slice(0, 6);
+  const tasks = listOf(data.tasks);
+  const logs = listOf(data.logs);
+  const agents = Array.isArray(data.agents?.agents) ? data.agents.agents : [];
   const connected = Boolean(gw?.rpc?.ok || status?.gateway?.reachable);
+  const connLabel = connected ? '在线' : '未连接';
+  const connClass = connected ? 'ok' : '';
+
+  const failedTasks = tasks.filter((t) => /fail|error|block/i.test(t.status || ''));
+  const runningTasks = tasks.filter((t) => /run|active/i.test(t.status || ''));
+  const errorLogs = logs.filter((l) => /error|fatal/i.test(l.level || '')).slice(0, 3);
+  const hasRisk = failedTasks.length > 0 || errorLogs.length > 0;
+
+  const overviewCards = [
+    { label: '连接状态', value: connLabel, hint: humanStatus(gw?.service?.runtime?.status || status?.gatewayService?.runtimeShort || ''), cls: connClass },
+    { label: 'Agent', value: String(agents.length), hint: agents.map((a) => a.identityName || a.id).join('、') || '暂无', cls: '' },
+    { label: '任务', value: String(tasks.length), hint: `运行中 ${runningTasks.length} · 失败 ${failedTasks.length}`, cls: failedTasks.length ? 'bad' : '' },
+    { label: '日志', value: String(logs.length), hint: `错误 ${errorLogs.length} 条`, cls: errorLogs.length ? 'bad' : '' },
+  ];
+
   el('section-dashboard').innerHTML = `
     <div class="card" style="margin-bottom:0">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <button class="btn primary" data-dash-action="reconnect">${connected ? '重连' : '连接'}</button>
-        <button class="btn" data-dash-action="sessions">打开会话</button>
-        <button class="btn" data-dash-action="tasks">打开任务</button>
-        <button class="btn" data-dash-action="logs">打开日志</button>
-        <button class="btn" data-dash-action="config">打开配置</button>
+        <button class="btn" data-dash-action="agents">Agent</button>
+        <button class="btn" data-dash-action="tasks">任务</button>
+        <button class="btn" data-dash-action="logs">日志</button>
+        <button class="btn" data-dash-action="config">配置</button>
+        <button class="btn" data-dash-action="connections">连接管理</button>
       </div>
     </div>
-    <div class="grid-2">
-      <div class="card">
-        <h2>总览</h2>
-        <table class="table">
-          <tr><th>Gateway</th><td class="mono">${esc(gw?.rpc?.url || status?.gateway?.probeUrl || '-')}</td></tr>
-          <tr><th>服务状态</th><td>${esc(gw?.service?.runtime?.status || status?.gatewayService?.runtimeShort || '-')}</td></tr>
-          <tr><th>端口</th><td>${esc(gw?.gateway?.port || status?.gateway?.port || '-')}</td></tr>
-          <tr><th>绑定</th><td>${esc(gw?.gateway?.bindMode || status?.gateway?.bindMode || '-')}</td></tr>
-          <tr><th>认证</th><td>${esc(gw?.rpc?.capability || status?.gateway?.error || '-')}</td></tr>
-          <tr><th>本地设置</th><td class="mono">${esc(settings.manualTarget || '-')}</td></tr>
-        </table>
-      </div>
-      <div class="card">
-        <h2>发现</h2>
-        <div class="small">Bonjour / 本机候选端口 · ${esc(envHint)}</div>
-        <div style="height:12px"></div>
-        <div class="list">
-          ${(discovery?.beacons || []).length ? discovery.beacons.map((b) => `
-            <div class="item">
-              <div><strong>${esc(b.name || b.host || 'beacon')}</strong></div>
-              <div class="small mono">${esc(b.url || b.address || '')}</div>
-            </div>`).join('') : '<div class="empty">暂无 beacon，当前以本机状态为准。</div>'}
-        </div>
-      </div>
+    <div class="hero">
+      ${overviewCards.map(({ label, value, hint, cls }) => `
+        <div class="card">
+          <div class="small">${esc(label)}</div>
+          <div class="stat"><strong style="${cls === 'bad' ? 'color:var(--bad)' : cls === 'ok' ? 'color:var(--ok)' : ''}">${esc(value)}</strong></div>
+          <div class="small" style="margin-top:4px">${esc(hint)}</div>
+        </div>`).join('')}
     </div>
-    <div style="height:16px"></div>
-    <div class="cols">
-      <div class="card"><h3>最近会话</h3>${sessions.length ? sessions.map(renderSessionItem).join('') : '<div class="empty">没有会话</div>'}</div>
-      <div class="card"><h3>最近任务</h3>${tasks.length ? tasks.map(renderTaskItem).join('') : '<div class="empty">没有任务</div>'}</div>
-      <div class="card"><h3>最近日志</h3>${logs.length ? logs.map(renderLogItem).join('') : '<div class="empty">没有日志</div>'}</div>
-    </div>
+    ${hasRisk ? `
+    <div class="card risk-card">
+      <h3 style="margin:0 0 10px;color:var(--bad)">⚠ 风险提示</h3>
+      ${failedTasks.slice(0, 3).map((t) => `<div class="small" style="margin-bottom:4px">任务失败：<strong>${esc(t.name || t.id || 'task')}</strong> — ${esc(humanStatus(t.status))} ${t.message ? '· ' + esc(t.message) : ''}</div>`).join('')}
+      ${errorLogs.map((l) => `<div class="small" style="margin-bottom:4px;color:var(--bad)">错误日志：${esc(l.message)}</div>`).join('')}
+      <div style="margin-top:8px;display:flex;gap:8px">
+        ${failedTasks.length ? `<button class="btn ghost" style="font-size:12px" data-dash-action="tasks">查看任务</button>` : ''}
+        ${errorLogs.length ? `<button class="btn ghost" style="font-size:12px" data-dash-action="logs">查看日志</button>` : ''}
+      </div>
+    </div>` : ''}
+    ${runningTasks.length ? `
+    <div class="card">
+      <h3 style="margin:0 0 10px">运行中任务 (${runningTasks.length})</h3>
+      <div class="list">${runningTasks.slice(0, 5).map(renderTaskItem).join('')}</div>
+      ${runningTasks.length > 5 ? `<div class="small" style="margin-top:8px;color:var(--muted)">还有 ${runningTasks.length - 5} 个任务</div>` : ''}
+    </div>` : `
+    <div class="card">
+      <h3 style="margin:0 0 8px">当前任务</h3>
+      <div class="empty">暂无运行中任务</div>
+    </div>`}
   `;
 }
 
@@ -210,25 +228,55 @@ function renderTasks() {
     el('section-tasks').innerHTML = renderTaskFlow(task);
     return;
   }
-  const tasks = filtered(listOf(state.data?.tasks), state.query);
+  let tasks = filtered(listOf(state.data?.tasks), state.query);
+  if (state.taskFilter === 'running') tasks = tasks.filter((t) => /run|active/i.test(t.status || ''));
+  else if (state.taskFilter === 'failed') tasks = tasks.filter((t) => /fail|error|block/i.test(t.status || ''));
+  else if (state.taskFilter === 'pending') tasks = tasks.filter((t) => /pend|wait/i.test(t.status || ''));
+  else {
+    const failed = tasks.filter((t) => /fail|error|block/i.test(t.status || ''));
+    const rest = tasks.filter((t) => !/fail|error|block/i.test(t.status || ''));
+    tasks = [...failed, ...rest];
+  }
+
+  const filterBtns = [['all','全部'], ['running','运行中'], ['failed','失败/卡住'], ['pending','等待中']].map(([k, label]) =>
+    `<button class="tabs-btn${state.taskFilter === k ? ' active' : ''}" data-task-filter="${k}">${label}</button>`
+  ).join('');
+
   el('section-tasks').innerHTML = `
     <div class="card">
       <div class="toolbar"><h2 style="margin:0">任务</h2><span class="small">${tasks.length} 条</span></div>
-      <div style="height:12px"></div>
-      ${tasks.length ? `<table class="table"><thead><tr><th>ID</th><th>Status</th><th>Runtime</th><th>Updated</th><th></th></tr></thead><tbody>${tasks.map((t) => `<tr><td class="mono small">${esc(t.id || t.taskId || '')}</td><td>${esc(t.status || '-')}</td><td>${esc(t.runtime || '-')}</td><td>${esc(t.updatedAt || t.createdAt || '-')}</td><td><button class="btn ghost" style="padding:4px 8px;font-size:12px" data-task-flow="${esc(t.id || t.taskId || '')}">任务流</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">当前没有任务</div>'}
+      <div style="height:10px"></div>
+      <div class="tabs" style="margin-bottom:10px">${filterBtns}</div>
+      ${tasks.length ? `<table class="table"><thead><tr><th>名称 / ID</th><th>状态</th><th>运行时长</th><th>更新时间</th><th></th></tr></thead><tbody>${tasks.map((t) => {
+        const isFail = /fail|error|block/i.test(t.status || '');
+        return `<tr style="${isFail ? 'color:var(--bad)' : ''}"><td class="mono small">${esc(t.name || t.id || t.taskId || '')}</td><td>${esc(humanStatus(t.status) || '-')}</td><td>${esc(t.runtime || '-')}</td><td>${esc(t.updatedAt || t.createdAt || '-')}</td><td><button class="btn ghost" style="padding:4px 8px;font-size:12px" data-task-flow="${esc(t.id || t.taskId || '')}">任务流</button></td></tr>`;
+      }).join('')}</tbody></table>` : '<div class="empty">没有匹配任务</div>'}
     </div>
   `;
 }
 
 function renderLogs() {
   const logsSource = state.data?.logs || {};
-  const logs = filtered(listOf(logsSource), state.query);
+  let logs = filtered(listOf(logsSource), state.query);
+  if (state.logLevel === 'error') logs = logs.filter((l) => /error|fatal/i.test(l.level || ''));
+  else if (state.logLevel === 'warn') logs = logs.filter((l) => /warn|error|fatal/i.test(l.level || ''));
+  else if (state.logLevel === 'info') logs = logs.filter((l) => /info|debug/i.test(l.level || ''));
+
+  const errors = logs.filter((l) => /error|fatal/i.test(l.level || ''));
+  const rest = logs.filter((l) => !/error|fatal/i.test(l.level || ''));
+  const ordered = [...errors, ...rest];
+
+  const lvlBtns = [['all','全部'], ['error','仅错误'], ['warn','错误+警告'], ['info','信息']].map(([k, label]) =>
+    `<button class="tabs-btn${state.logLevel === k ? ' active' : ''}" data-log-level="${k}">${label}</button>`
+  ).join('');
+
   el('section-logs').innerHTML = `
     <div class="card">
-      <div class="toolbar"><h2 style="margin:0">日志</h2><span class="small">${logs.length} 行</span></div>
-      <div style="height:12px"></div>
+      <div class="toolbar"><h2 style="margin:0">日志</h2><span class="small">${ordered.length} 行${errors.length ? ` · <span style="color:var(--bad)">${errors.length} 错误</span>` : ''}</span></div>
+      <div style="height:10px"></div>
+      <div class="tabs" style="margin-bottom:10px">${lvlBtns}</div>
       ${logsSource?.error ? `<div class="empty">日志读取失败：${esc(logsSource.error)}</div><div style="height:12px"></div>` : ''}
-      <div class="list">${logs.length ? logs.map(renderLogItem).join('') : '<div class="empty">没有匹配日志</div>'}</div>
+      <div class="list">${ordered.length ? ordered.map(renderLogItem).join('') : '<div class="empty">没有匹配日志</div>'}</div>
     </div>
   `;
 }
@@ -615,12 +663,19 @@ async function actionInit() {
   });
 
   el('section-tasks').addEventListener('click', (e) => {
+    const filterBtn = e.target.closest('[data-task-filter]');
+    if (filterBtn) { state.taskFilter = filterBtn.dataset.taskFilter; render(); return; }
     const flowBtn = e.target.closest('[data-task-flow]');
     if (flowBtn) { state.selectedTask = flowBtn.dataset.taskFlow; render(); return; }
     const backBtn = e.target.closest('[data-task-back]');
     if (backBtn) { state.selectedTask = null; render(); return; }
     const linkBtn = e.target.closest('[data-link-tab]');
     if (linkBtn) navigateTo(linkBtn.dataset.linkTab, linkBtn.dataset.linkQuery || '');
+  });
+
+  el('section-logs').addEventListener('click', (e) => {
+    const lvlBtn = e.target.closest('[data-log-level]');
+    if (lvlBtn) { state.logLevel = lvlBtn.dataset.logLevel; render(); }
   });
 
   el('section-skills').addEventListener('click', async (e) => {

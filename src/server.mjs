@@ -45,6 +45,7 @@ async function detectEnv() {
 const staticFiles = {
   '/': path.join(__dirname, 'index.html'),
   '/app.js': path.join(__dirname, 'app.js'),
+  '/chat.js': path.join(__dirname, 'chat.js'),
   '/styles.css': path.join(__dirname, 'styles.css'),
 };
 
@@ -137,6 +138,61 @@ async function collectBootstrap() {
     agents,
     settings,
   };
+}
+
+function buildChatSystemPrompt(ctx) {
+  const gw = ctx?.gatewayStatus || {};
+  const connected = Boolean(gw?.rpc?.ok || ctx?.status?.gateway?.reachable);
+  const tasks = ctx?.tasks?.tasks || [];
+  const agents = ctx?.agents?.agents || [];
+  const logs = ctx?.logs?.logs || [];
+  const errorLogs = logs.filter((l) => /error|fatal/i.test(l.level || '')).slice(0, 5);
+  const failedTasks = tasks.filter((t) => /fail|error/i.test(t.status || ''));
+  const runningTasks = tasks.filter((t) => /run|active/i.test(t.status || ''));
+
+  return `你是 VisualClaw 的 AI 助手，帮助用户理解和操作 OpenClaw 控制台。请用中文回答，简洁清晰。
+
+## 当前系统状态
+- 连接状态：${connected ? '在线' : '未连接'}
+- Gateway：${gw?.rpc?.url || ctx?.status?.gateway?.probeUrl || '未知'}
+- Agent：${agents.length} 个（${agents.map((a) => a.identityName || a.id).join('、') || '无'}）
+- 任务：共 ${tasks.length} 个，运行中 ${runningTasks.length} 个，失败 ${failedTasks.length} 个
+${errorLogs.length ? `\n## 最近错误\n${errorLogs.map((l) => `- [${l.time || ''}] ${l.message}`).join('\n')}` : ''}
+${failedTasks.length ? `\n## 失败任务\n${failedTasks.map((t) => `- ${t.name || t.id}: ${t.message || t.status}`).join('\n')}` : ''}
+
+## 可建议的操作（白名单）
+若需建议操作，在回复末尾以此格式附加，其他情况不要附加：
+<actions>[{"label":"查看日志","type":"navigate","tab":"logs"}]</actions>
+
+可用 type：navigate（tab: dashboard/sessions/tasks/logs/config/agents/skills/connections）、refresh（刷新数据）、restart（重启 Gateway，危险）。
+危险操作必须在回复中提醒用户确认。`;
+}
+
+function parseChatResponse(text) {
+  const match = text.match(/<actions>([\s\S]*?)<\/actions>/);
+  let actions = [];
+  if (match) {
+    try { actions = JSON.parse(match[1]); } catch {}
+  }
+  return { content: text.replace(/<actions>[\s\S]*?<\/actions>/g, '').trim(), actions };
+}
+
+async function callClaude(systemPrompt, messages) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { content: 'Chat 功能需要配置 ANTHROPIC_API_KEY 环境变量。', actions: [] };
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: messages.map((m) => ({ role: m.role, content: String(m.content) })),
+    }),
+  });
+  if (!res.ok) throw new Error(`Claude API ${res.status}`);
+  const data = await res.json();
+  return parseChatResponse(data.content?.[0]?.text || '抱歉，无法获取回复。');
 }
 
 async function readBody(req) {
@@ -248,6 +304,21 @@ const server = http.createServer(async (req, res) => {
 
       const result = await ops[action]();
       send(res, 200, 'application/json; charset=utf-8', JSON.stringify({ ok: true, stdout: result.stdout, stderr: result.stderr }));
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/chat') {
+      const body = await readBody(req);
+      const { message, history = [], context } = body;
+      if (!message) { send(res, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'message required' })); return; }
+      try {
+        const systemPrompt = buildChatSystemPrompt(context);
+        const messages = [...history.slice(-10), { role: 'user', content: String(message) }];
+        const result = await callClaude(systemPrompt, messages);
+        send(res, 200, 'application/json; charset=utf-8', JSON.stringify(result));
+      } catch (error) {
+        send(res, 500, 'application/json; charset=utf-8', JSON.stringify({ content: `调用失败：${error?.message || error}`, actions: [] }));
+      }
       return;
     }
 
