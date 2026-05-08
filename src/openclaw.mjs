@@ -185,3 +185,23 @@ export async function getSkills(agentId) {
   const value = parseJson(stdout, { skills: [] });
   return { skills: Array.isArray(value?.skills) ? value.skills : [], workspaceDir: value?.workspaceDir, error };
 }
+
+export async function getAgentBindings(agentId) {
+  const args = ['agents', 'bindings', '--json'];
+  if (agentId) args.push('--agent', agentId);
+  const { stdout, error } = await safeRunOpenClaw(args);
+  const bindings = parseJson(stdout, []);
+  return { bindings: Array.isArray(bindings) ? bindings : [], error };
+}
+
+export async function skillsUpdateAll(agentId) {
+  const args = ['skills', 'update', '--all'];
+  if (agentId) args.push('--agent', agentId);
+  return safeRunOpenClaw(args, { timeoutMs: 60000 });
+}
+
+export async function skillsInstall(slug, agentId) {
+  const args = ['skills', 'install', slug];
+  if (agentId) args.push('--agent', agentId);
+  return safeRunOpenClaw(args, { timeoutMs: 60000 });
+}

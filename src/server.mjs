@@ -8,6 +8,7 @@ import {
   gatewayRestart,
   gatewayStart,
   gatewayStop,
+  getAgentBindings,
   getAgents,
   getConfig,
   getDiscovery,
@@ -18,6 +19,8 @@ import {
   getStatus,
   getTasks,
   setConfig,
+  skillsInstall,
+  skillsUpdateAll,
 } from './openclaw.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -205,6 +208,35 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         send(res, 200, 'application/json; charset=utf-8', JSON.stringify({ ok: true, stdout: result.stdout }));
+        return;
+      }
+
+      if (action === 'agent-bindings') {
+        const agentId = String(body.agentId || '').trim();
+        if (!agentId) {
+          send(res, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'agentId required' }));
+          return;
+        }
+        send(res, 200, 'application/json; charset=utf-8', JSON.stringify(await getAgentBindings(agentId)));
+        return;
+      }
+
+      if (action === 'skills-update') {
+        const agentId = String(body.agentId || '').trim() || undefined;
+        const result = await skillsUpdateAll(agentId);
+        send(res, 200, 'application/json; charset=utf-8', JSON.stringify({ ok: true, stdout: result.stdout, stderr: result.stderr, error: result.error }));
+        return;
+      }
+
+      if (action === 'skills-install') {
+        const slug = String(body.slug || '').trim();
+        if (!slug) {
+          send(res, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'slug required' }));
+          return;
+        }
+        const agentId = String(body.agentId || '').trim() || undefined;
+        const result = await skillsInstall(slug, agentId);
+        send(res, 200, 'application/json; charset=utf-8', JSON.stringify({ ok: !result.error, stdout: result.stdout, stderr: result.stderr, error: result.error }));
         return;
       }
 

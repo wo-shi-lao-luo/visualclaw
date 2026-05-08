@@ -11,6 +11,8 @@ const state = {
   skillsAgent: '',
   skills: null,
   skillsLoading: false,
+  agentBindings: null,
+  agentBindingsLoading: false,
 };
 
 const tabs = [
@@ -315,11 +317,19 @@ function renderAgents() {
           <tr><th>默认</th><td>${agent.isDefault ? '是' : '否'}</td></tr>
           <tr><th>Workspace</th><td class="mono small">${esc(agent.workspace || '-')}</td></tr>
         </table>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
           <button class="btn ghost" data-link-tab="sessions" data-link-query="${esc(agent.id)}">相关会话</button>
           <button class="btn ghost" data-link-tab="logs" data-link-query="${esc(agent.id)}">相关日志</button>
           <button class="btn ghost" data-link-skills="${esc(agent.id)}">查看 Skills</button>
         </div>
+        <h3 style="margin:0 0 8px">Bindings</h3>
+        ${state.agentBindingsLoading
+          ? '<div class="empty">加载中…</div>'
+          : state.agentBindings === null
+            ? `<button class="btn ghost" data-load-bindings="${esc(agent.id)}">查看 Bindings</button>`
+            : state.agentBindings.length
+              ? `<div class="list">${state.agentBindings.map((b) => `<div class="item"><div class="mono small">${esc(b.channel || '')} → ${esc(b.target || b.agentId || JSON.stringify(b))}</div></div>`).join('')}</div>`
+              : '<div class="empty">该 Agent 暂无 Bindings</div>'}
       </div>
       ${sessions.length ? `<div class="card"><h3>最近会话</h3>${sessions.map(renderSessionItem).join('')}</div>` : ''}
     `;
@@ -373,28 +383,47 @@ function renderSkills() {
   const disabled = all.filter((s) => s.disabled);
   const unavailable = all.filter((s) => !s.eligible && !s.disabled);
 
+  const isInstalled = (s) => s.source === 'openclaw-workspace';
   const skillCard = (s) => `
     <div class="item">
       <div style="display:flex;align-items:flex-start;gap:10px">
         <span style="font-size:1.3em;line-height:1.3">${esc(s.emoji || '🔧')}</span>
         <div style="flex:1">
-          <strong>${esc(s.name)}</strong>${s.bundled ? ' <span class="tag">内置</span>' : ''}${s.source === 'clawhub' ? ' <span class="tag purple">ClawHub</span>' : ''}
+          <strong>${esc(s.name)}</strong>${s.bundled ? ' <span class="tag">内置</span>' : ''}${isInstalled(s) ? ' <span class="tag purple">已安装</span>' : ''}
           <div class="small" style="margin-top:2px">${esc(s.description || '')}</div>
         </div>
+        ${isInstalled(s) ? `<button class="btn ghost" style="padding:4px 8px;font-size:12px;flex-shrink:0" data-skill-update="${esc(s.name)}">更新</button>` : ''}
       </div>
     </div>
   `;
 
+  const installedCount = all.filter(isInstalled).length;
   el('section-skills').innerHTML = `
     <div class="card">
-      <div class="toolbar"><h2 style="margin:0">Skills 管理中心</h2><span class="small">${all.length} 个</span></div>
+      <div class="toolbar"><h2 style="margin:0">Skills 管理中心</h2><span class="small">${all.length} 个 · ${installedCount} 个已安装</span></div>
       <div style="height:12px"></div>
       ${agentSelector}
+      ${installedCount > 0 ? `<button class="btn ghost" data-skills-update>更新全部已安装 (${installedCount})</button>` : ''}
     </div>
     ${eligible.length ? `<div class="card"><h3>可用 (${eligible.length})</h3><div class="list">${eligible.map(skillCard).join('')}</div></div>` : ''}
     ${disabled.length ? `<div class="card"><h3>已禁用 (${disabled.length})</h3><div class="list">${disabled.map(skillCard).join('')}</div></div>` : ''}
     ${unavailable.length ? `<div class="card"><h3>不可用 (${unavailable.length})</h3><div class="small" style="margin-bottom:8px">缺少依赖或条件未满足</div><div class="list">${unavailable.map(skillCard).join('')}</div></div>` : ''}
   `;
+}
+
+async function loadAgentBindings(agentId) {
+  state.agentBindingsLoading = true;
+  renderAgents();
+  try {
+    const data = await runAction('agent-bindings', { agentId });
+    state.agentBindings = data.bindings || [];
+  } catch (err) {
+    state.agentBindings = [];
+    state.actionNote = `Bindings 加载失败：${err.message || String(err)}`;
+  } finally {
+    state.agentBindingsLoading = false;
+    renderAgents();
+  }
 }
 
 async function loadSkills() {
@@ -557,9 +586,22 @@ async function actionInit() {
 
   el('section-agents').addEventListener('click', (e) => {
     const selectBtn = e.target.closest('[data-agent-select]');
-    if (selectBtn) { state.selectedAgent = selectBtn.dataset.agentSelect; render(); return; }
+    if (selectBtn) {
+      state.selectedAgent = selectBtn.dataset.agentSelect;
+      state.agentBindings = null;
+      state.agentBindingsLoading = false;
+      render();
+      return;
+    }
     const backBtn = e.target.closest('[data-agent-back]');
-    if (backBtn) { state.selectedAgent = null; render(); return; }
+    if (backBtn) {
+      state.selectedAgent = null;
+      state.agentBindings = null;
+      render();
+      return;
+    }
+    const bindingsBtn = e.target.closest('[data-load-bindings]');
+    if (bindingsBtn) { loadAgentBindings(bindingsBtn.dataset.loadBindings); return; }
     const skillsBtn = e.target.closest('[data-link-skills]');
     if (skillsBtn) {
       state.skillsAgent = skillsBtn.dataset.linkSkills;
@@ -589,6 +631,37 @@ async function actionInit() {
         state.skillsAgent = newAgent;
         state.skills = null;
         await loadSkills();
+      }
+      return;
+    }
+    const updateAllBtn = e.target.closest('[data-skills-update]');
+    if (updateAllBtn) {
+      state.actionNote = '正在更新全部已安装 Skills，请稍候…';
+      render();
+      try {
+        await runAction('skills-update', { agentId: state.skillsAgent || undefined });
+        state.actionNote = 'Skills 更新完成';
+        state.skills = null;
+        await loadSkills();
+      } catch (err) {
+        state.actionNote = `更新失败：${err.message || String(err)}`;
+        render();
+      }
+      return;
+    }
+    const updateOneBtn = e.target.closest('[data-skill-update]');
+    if (updateOneBtn) {
+      const slug = updateOneBtn.dataset.skillUpdate;
+      state.actionNote = `正在更新 ${slug}…`;
+      render();
+      try {
+        await runAction('skills-install', { slug, agentId: state.skillsAgent || undefined });
+        state.actionNote = `${slug} 更新完成`;
+        state.skills = null;
+        await loadSkills();
+      } catch (err) {
+        state.actionNote = `更新失败：${err.message || String(err)}`;
+        render();
       }
     }
   });
