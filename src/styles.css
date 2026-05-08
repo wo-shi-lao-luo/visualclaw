@@ -48,4 +48,16 @@ input[type="text"] { background: #0f172a; color: var(--text); border:1px solid v
 .empty { padding: 18px; color: var(--muted); border:1px dashed var(--line); border-radius: 14px; }
 .footer { padding: 0 22px 22px; color: var(--muted); font-size: 12px; }
 .error { color: #fecaca; }
+.flow-item { display:flex; gap:12px; padding:10px 0; position:relative; }
+.flow-item:not(:last-child)::after { content:''; position:absolute; left:9px; top:28px; bottom:-8px; width:2px; background:var(--line); }
+.flow-dot { width:20px; height:20px; border-radius:50%; background:var(--line); flex-shrink:0; margin-top:2px; border:2px solid var(--panel); }
+.flow-active .flow-dot { background:var(--ok); }
+.flow-fail .flow-dot { background:var(--bad); }
+.flow-body { flex:1; }
+.tag { display:inline-block; padding:1px 6px; border-radius:999px; font-size:11px; background:var(--panel-2); border:1px solid var(--line); color:var(--muted); margin-left:4px; vertical-align:middle; }
+.tag.green { color:var(--ok); border-color:var(--ok); }
+.tag.red { color:var(--bad); border-color:var(--bad); }
+.tag.purple { color:var(--accent); border-color:var(--accent); }
+.clickable { cursor:pointer; transition:border-color .15s; }
+.clickable:hover { border-color:#40507d; }
 @media (max-width: 1100px) { .app { grid-template-columns: 1fr; } .side { border-right: none; border-bottom: 1px solid var(--line); } .hero, .grid-2, .cols { grid-template-columns: 1fr; } .topbar { position: static; } }

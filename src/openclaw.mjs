@@ -171,3 +171,17 @@ export async function setConfig(configPath, value) {
     return { stdout: '', stderr: errorMessage(error), error: errorMessage(error) };
   }
 }
+
+export async function getAgents() {
+  const { stdout, error } = await safeRunOpenClaw(['agents', 'list', '--json']);
+  const agents = parseJson(stdout, []);
+  return { agents: Array.isArray(agents) ? agents : [], error };
+}
+
+export async function getSkills(agentId) {
+  const args = ['skills', 'list', '--json'];
+  if (agentId) args.push('--agent', agentId);
+  const { stdout, error } = await safeRunOpenClaw(args, { timeoutMs: 15000 });
+  const value = parseJson(stdout, { skills: [] });
+  return { skills: Array.isArray(value?.skills) ? value.skills : [], workspaceDir: value?.workspaceDir, error };
+}

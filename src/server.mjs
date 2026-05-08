@@ -8,11 +8,13 @@ import {
   gatewayRestart,
   gatewayStart,
   gatewayStop,
+  getAgents,
   getConfig,
   getDiscovery,
   getGatewayStatus,
   getLogs,
   getSessions,
+  getSkills,
   getStatus,
   getTasks,
   setConfig,
@@ -102,7 +104,7 @@ function probeManualTarget(target) {
 async function collectBootstrap() {
   const settings = await readSettings();
 
-  const [status, gatewayStatus, sessions, tasks, logs, discovery, config, manualProbeUrl] = await Promise.all([
+  const [status, gatewayStatus, sessions, tasks, logs, discovery, config, agents, manualProbeUrl] = await Promise.all([
     getStatus().catch((error) => ({ error: String(error?.message || error) })),
     getGatewayStatus().catch((error) => ({ error: String(error?.message || error) })),
     getSessions().catch((error) => ({ sessions: [], stores: [], count: 0, error: String(error?.message || error) })),
@@ -110,6 +112,7 @@ async function collectBootstrap() {
     getLogs().catch((error) => ({ error: String(error?.message || error), logs: [] })),
     getDiscovery().catch((error) => ({ beacons: [], count: 0, error: String(error?.message || error) })),
     getConfig().catch((error) => ({ error: String(error?.message || error) })),
+    getAgents().catch((error) => ({ agents: [], error: String(error?.message || error) })),
     probeManualTarget(settings.manualTarget),
   ]);
 
@@ -128,6 +131,7 @@ async function collectBootstrap() {
     logs,
     discovery: { ...discovery, beacons: finalBeacons },
     config,
+    agents,
     settings,
   };
 }
@@ -212,6 +216,12 @@ const server = http.createServer(async (req, res) => {
 
       const result = await ops[action]();
       send(res, 200, 'application/json; charset=utf-8', JSON.stringify({ ok: true, stdout: result.stdout, stderr: result.stderr }));
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/skills') {
+      const agentId = url.searchParams.get('agent') || undefined;
+      send(res, 200, 'application/json; charset=utf-8', JSON.stringify(await getSkills(agentId)));
       return;
     }
 

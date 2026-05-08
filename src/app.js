@@ -6,6 +6,11 @@ const state = {
   data: null,
   manualTarget: '',
   actionNote: '',
+  selectedAgent: null,
+  selectedTask: null,
+  skillsAgent: '',
+  skills: null,
+  skillsLoading: false,
 };
 
 const tabs = [
@@ -14,6 +19,8 @@ const tabs = [
   ['tasks', '任务'],
   ['logs', '日志'],
   ['config', '配置'],
+  ['agents', 'Agent'],
+  ['skills', 'Skills'],
   ['connections', '连接管理'],
 ];
 
@@ -26,6 +33,15 @@ const textOr = (...values) => values.find((value) => value != null && value !== 
 
 function setTab(name) {
   state.activeTab = name;
+  if (name === 'skills' && state.skills === null && !state.skillsLoading) loadSkills();
+  render();
+}
+
+function navigateTo(tab, query) {
+  state.activeTab = tab;
+  state.query = query;
+  el('searchBox').value = query;
+  if (tab === 'skills' && state.skills === null && !state.skillsLoading) loadSkills();
   render();
 }
 
@@ -158,13 +174,46 @@ function renderSessions() {
   `;
 }
 
+function renderTaskFlow(t) {
+  const steps = t.steps || t.phases || t.history || [];
+  const stepsHtml = steps.length
+    ? steps.map((s, i) => {
+        const st = String(s.status || s.state || '');
+        const isFail = /fail|error|block/i.test(st);
+        const isRun = /run|active|progress/i.test(st);
+        return `<div class="flow-item${isFail ? ' flow-fail' : isRun ? ' flow-active' : ''}"><div class="flow-dot"></div><div class="flow-body"><strong>${esc(s.name || s.title || `步骤 ${i + 1}`)}</strong>${st ? ` <span class="tag">${esc(st)}</span>` : ''}${s.message ? `<div class="small">${esc(s.message)}</div>` : ''}</div></div>`;
+      }).join('')
+    : '<div class="empty">暂无详细阶段数据</div>';
+  const statusClass = /fail|error/i.test(t.status || '') ? ' red' : /run|active/i.test(t.status || '') ? ' green' : '';
+  return `
+    <div class="card">
+      <button class="btn ghost" data-task-back style="margin-bottom:12px">← 返回</button>
+      <h2 style="margin:0 0 8px">${esc(t.name || t.id || 'task')}</h2>
+      <div style="margin-bottom:12px"><span class="tag${statusClass}">${esc(t.status || '未知')}</span>${t.runtime ? `<span class="small"> · ${esc(t.runtime)}</span>` : ''}</div>
+      <table class="table" style="margin-bottom:12px">
+        <tr><th>ID</th><td class="mono small">${esc(t.id || t.taskId || '-')}</td></tr>
+        ${t.message ? `<tr><th>消息</th><td>${esc(t.message)}</td></tr>` : ''}
+        ${t.updatedAt ? `<tr><th>更新时间</th><td>${esc(t.updatedAt)}</td></tr>` : ''}
+      </table>
+      <button class="btn ghost" data-link-tab="logs" data-link-query="${esc(t.id || t.taskId || '')}">查看相关日志</button>
+      <h3 style="margin:16px 0 4px">任务流</h3>
+      ${stepsHtml}
+    </div>
+  `;
+}
+
 function renderTasks() {
+  if (state.selectedTask) {
+    const task = listOf(state.data?.tasks).find((t) => (t.id || t.taskId) === state.selectedTask) || { id: state.selectedTask };
+    el('section-tasks').innerHTML = renderTaskFlow(task);
+    return;
+  }
   const tasks = filtered(listOf(state.data?.tasks), state.query);
   el('section-tasks').innerHTML = `
     <div class="card">
       <div class="toolbar"><h2 style="margin:0">任务</h2><span class="small">${tasks.length} 条</span></div>
       <div style="height:12px"></div>
-      ${tasks.length ? `<table class="table"><thead><tr><th>ID</th><th>Status</th><th>Runtime</th><th>Updated</th></tr></thead><tbody>${tasks.map((t) => `<tr><td class="mono">${esc(t.id || t.taskId || '')}</td><td>${esc(t.status || '-')}</td><td>${esc(t.runtime || '-')}</td><td>${esc(t.updatedAt || t.createdAt || '-')}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">当前没有任务</div>'}
+      ${tasks.length ? `<table class="table"><thead><tr><th>ID</th><th>Status</th><th>Runtime</th><th>Updated</th><th></th></tr></thead><tbody>${tasks.map((t) => `<tr><td class="mono small">${esc(t.id || t.taskId || '')}</td><td>${esc(t.status || '-')}</td><td>${esc(t.runtime || '-')}</td><td>${esc(t.updatedAt || t.createdAt || '-')}</td><td><button class="btn ghost" style="padding:4px 8px;font-size:12px" data-task-flow="${esc(t.id || t.taskId || '')}">任务流</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">当前没有任务</div>'}
     </div>
   `;
 }
@@ -249,6 +298,123 @@ function renderConnections() {
   `;
 }
 
+function renderAgents() {
+  const agentData = state.data?.agents || {};
+  const agents = Array.isArray(agentData.agents) ? agentData.agents : Array.isArray(agentData) ? agentData : [];
+
+  if (state.selectedAgent) {
+    const agent = agents.find((a) => a.id === state.selectedAgent) || { id: state.selectedAgent };
+    const sessions = listOf(state.data?.sessions).filter((s) => s.agentId === state.selectedAgent).slice(0, 5);
+    el('section-agents').innerHTML = `
+      <div class="card">
+        <button class="btn ghost" data-agent-back style="margin-bottom:12px">← 返回</button>
+        <h2 style="margin:0 0 8px">${esc(agent.identityEmoji || '🤖')} ${esc(agent.identityName || agent.id)}</h2>
+        <table class="table" style="margin-bottom:12px">
+          <tr><th>ID</th><td class="mono">${esc(agent.id)}</td></tr>
+          <tr><th>Model</th><td>${esc(agent.model || '-')}</td></tr>
+          <tr><th>默认</th><td>${agent.isDefault ? '是' : '否'}</td></tr>
+          <tr><th>Workspace</th><td class="mono small">${esc(agent.workspace || '-')}</td></tr>
+        </table>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn ghost" data-link-tab="sessions" data-link-query="${esc(agent.id)}">相关会话</button>
+          <button class="btn ghost" data-link-tab="logs" data-link-query="${esc(agent.id)}">相关日志</button>
+          <button class="btn ghost" data-link-skills="${esc(agent.id)}">查看 Skills</button>
+        </div>
+      </div>
+      ${sessions.length ? `<div class="card"><h3>最近会话</h3>${sessions.map(renderSessionItem).join('')}</div>` : ''}
+    `;
+    return;
+  }
+
+  el('section-agents').innerHTML = `
+    <div class="card">
+      <div class="toolbar"><h2 style="margin:0">Agent 控制台</h2><span class="small">${agents.length} 个</span></div>
+      <div style="height:12px"></div>
+      ${agents.length ? `<div class="list">${agents.map((a) => `
+        <div class="item clickable" data-agent-select="${esc(a.id)}">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:1.5em;line-height:1">${esc(a.identityEmoji || '🤖')}</span>
+            <div style="flex:1">
+              <strong>${esc(a.identityName || a.id)}</strong>${a.isDefault ? ' <span class="tag green">默认</span>' : ''}
+              <div class="small mono">${esc(a.id)} · ${esc(a.model || '-')}</div>
+            </div>
+            <span class="small">${esc(a.bindings || 0)} bindings</span>
+          </div>
+        </div>`).join('')}</div>` : '<div class="empty">没有 Agent</div>'}
+      ${agentData.error ? `<div class="empty" style="margin-top:8px">错误：${esc(agentData.error)}</div>` : ''}
+    </div>
+  `;
+}
+
+function renderSkills() {
+  const agentData = state.data?.agents || {};
+  const agents = Array.isArray(agentData.agents) ? agentData.agents : Array.isArray(agentData) ? agentData : [];
+  const agentFilter = state.skillsAgent;
+
+  const agentSelector = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="btn${!agentFilter ? '' : ' ghost'}" data-skills-agent="">全局</button>
+      ${agents.map((a) => `<button class="btn${agentFilter === a.id ? '' : ' ghost'}" data-skills-agent="${esc(a.id)}">${esc(a.identityEmoji || '')} ${esc(a.identityName || a.id)}</button>`).join('')}
+    </div>
+  `;
+
+  if (state.skillsLoading) {
+    el('section-skills').innerHTML = `<div class="card">${agentSelector}<div class="empty">加载 Skills 中…</div></div>`;
+    return;
+  }
+
+  if (!state.skills) {
+    el('section-skills').innerHTML = `<div class="card"><div class="toolbar"><h2 style="margin:0">Skills 管理中心</h2></div><div style="height:12px"></div>${agentSelector}<div class="empty">选择范围后自动加载</div></div>`;
+    return;
+  }
+
+  const all = state.skills;
+  const eligible = all.filter((s) => s.eligible && !s.disabled);
+  const disabled = all.filter((s) => s.disabled);
+  const unavailable = all.filter((s) => !s.eligible && !s.disabled);
+
+  const skillCard = (s) => `
+    <div class="item">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <span style="font-size:1.3em;line-height:1.3">${esc(s.emoji || '🔧')}</span>
+        <div style="flex:1">
+          <strong>${esc(s.name)}</strong>${s.bundled ? ' <span class="tag">内置</span>' : ''}${s.source === 'clawhub' ? ' <span class="tag purple">ClawHub</span>' : ''}
+          <div class="small" style="margin-top:2px">${esc(s.description || '')}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  el('section-skills').innerHTML = `
+    <div class="card">
+      <div class="toolbar"><h2 style="margin:0">Skills 管理中心</h2><span class="small">${all.length} 个</span></div>
+      <div style="height:12px"></div>
+      ${agentSelector}
+    </div>
+    ${eligible.length ? `<div class="card"><h3>可用 (${eligible.length})</h3><div class="list">${eligible.map(skillCard).join('')}</div></div>` : ''}
+    ${disabled.length ? `<div class="card"><h3>已禁用 (${disabled.length})</h3><div class="list">${disabled.map(skillCard).join('')}</div></div>` : ''}
+    ${unavailable.length ? `<div class="card"><h3>不可用 (${unavailable.length})</h3><div class="small" style="margin-bottom:8px">缺少依赖或条件未满足</div><div class="list">${unavailable.map(skillCard).join('')}</div></div>` : ''}
+  `;
+}
+
+async function loadSkills() {
+  state.skillsLoading = true;
+  renderSkills();
+  try {
+    const url = state.skillsAgent ? `/api/skills?agent=${encodeURIComponent(state.skillsAgent)}` : '/api/skills';
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    state.skills = Array.isArray(data.skills) ? data.skills : [];
+  } catch (err) {
+    state.skills = [];
+    state.actionNote = `Skills 加载失败：${err.message || String(err)}`;
+  } finally {
+    state.skillsLoading = false;
+    render();
+  }
+}
+
 function render() {
   renderNav();
   renderTop();
@@ -261,6 +427,8 @@ function render() {
   renderLogs();
   renderConfig();
   renderConnections();
+  renderAgents();
+  renderSkills();
 }
 
 async function loadData() {
@@ -384,6 +552,44 @@ async function actionInit() {
       }
     } else {
       setTab(action);
+    }
+  });
+
+  el('section-agents').addEventListener('click', (e) => {
+    const selectBtn = e.target.closest('[data-agent-select]');
+    if (selectBtn) { state.selectedAgent = selectBtn.dataset.agentSelect; render(); return; }
+    const backBtn = e.target.closest('[data-agent-back]');
+    if (backBtn) { state.selectedAgent = null; render(); return; }
+    const skillsBtn = e.target.closest('[data-link-skills]');
+    if (skillsBtn) {
+      state.skillsAgent = skillsBtn.dataset.linkSkills;
+      state.skills = null;
+      state.activeTab = 'skills';
+      loadSkills();
+      return;
+    }
+    const linkBtn = e.target.closest('[data-link-tab]');
+    if (linkBtn) navigateTo(linkBtn.dataset.linkTab, linkBtn.dataset.linkQuery || '');
+  });
+
+  el('section-tasks').addEventListener('click', (e) => {
+    const flowBtn = e.target.closest('[data-task-flow]');
+    if (flowBtn) { state.selectedTask = flowBtn.dataset.taskFlow; render(); return; }
+    const backBtn = e.target.closest('[data-task-back]');
+    if (backBtn) { state.selectedTask = null; render(); return; }
+    const linkBtn = e.target.closest('[data-link-tab]');
+    if (linkBtn) navigateTo(linkBtn.dataset.linkTab, linkBtn.dataset.linkQuery || '');
+  });
+
+  el('section-skills').addEventListener('click', async (e) => {
+    const agentBtn = e.target.closest('[data-skills-agent]');
+    if (agentBtn) {
+      const newAgent = agentBtn.dataset.skillsAgent;
+      if (newAgent !== state.skillsAgent) {
+        state.skillsAgent = newAgent;
+        state.skills = null;
+        await loadSkills();
+      }
     }
   });
 
