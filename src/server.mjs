@@ -177,7 +177,7 @@ function parseChatResponse(text) {
   return { content: text.replace(/<actions>[\s\S]*?<\/actions>/g, '').trim(), actions };
 }
 
-async function callOpenClaw(systemPrompt, messages, agentId = 'main') {
+async function callOpenClaw(systemPrompt, messages, agentId = 'main', model = undefined) {
   const history = messages.slice(0, -1).slice(-6);
   const lastUser = messages[messages.length - 1];
   const userText = String(lastUser?.content || '');
@@ -188,7 +188,7 @@ async function callOpenClaw(systemPrompt, messages, agentId = 'main') {
   }
   fullMessage += `用户：${userText}`;
 
-  const result = await runAgent(agentId, fullMessage);
+  const result = await runAgent(agentId, fullMessage, model);
   if (result.error && !result.text) throw new Error(result.error);
   return parseChatResponse(result.text || '抱歉，无法获取回复。');
 }
@@ -307,12 +307,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/api/chat') {
       const body = await readBody(req);
-      const { message, history = [], context, agentId } = body;
+      const { message, history = [], context, agentId, model } = body;
       if (!message) { send(res, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'message required' })); return; }
       try {
         const systemPrompt = buildChatSystemPrompt(context);
         const messages = [...history.slice(-10), { role: 'user', content: String(message) }];
-        const result = await callOpenClaw(systemPrompt, messages, agentId || 'main');
+        const result = await callOpenClaw(systemPrompt, messages, agentId || 'main', model || undefined);
         send(res, 200, 'application/json; charset=utf-8', JSON.stringify(result));
       } catch (error) {
         send(res, 500, 'application/json; charset=utf-8', JSON.stringify({ content: `调用失败：${error?.message || error}`, actions: [] }));

@@ -18,6 +18,7 @@ const state = {
   sessionChatMessages: [],
   sessionChatLoading: false,
   chatAgentId: 'main',
+  chatModel: '',
   selectedSessionKey: null,
 };
 
@@ -196,6 +197,8 @@ function renderSessions() {
   const agentOpts = agents.length
     ? agents.map((a) => `<option value="${esc(a.id)}" ${state.chatAgentId === a.id ? 'selected' : ''}>${esc(a.identityEmoji || '')} ${esc(a.identityName || a.id)}</option>`).join('')
     : `<option value="main" selected>main</option>`;
+  const uniqueModels = [...new Set(agents.map((a) => a.model).filter(Boolean))];
+  const modelOpts = `<option value="">默认（Agent 配置）</option>` + uniqueModels.map((m) => `<option value="${esc(m)}" ${state.chatModel === m ? 'selected' : ''}>${esc(m)}</option>`).join('');
   const sessionOpts = sessions.map((s) => `<option value="${esc(s.key)}" ${state.selectedSessionKey === s.key ? 'selected' : ''}>${esc(s.key.slice(0, 24))} · ${esc(s.model || '-')} · ${fmtMs(s.ageMs)}</option>`).join('');
   const chatMsgs = state.sessionChatMessages.map((m) => {
     const isUser = m.role === 'user';
@@ -208,6 +211,10 @@ function renderSessions() {
         <div style="display:flex;flex-direction:column;gap:4px">
           <span class="small" style="color:var(--muted)">对话 Agent</span>
           <select id="chatAgentSelect" style="${selStyle}">${agentOpts}</select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span class="small" style="color:var(--muted)">模型</span>
+          <select id="chatModelSelect" style="${selStyle}">${modelOpts}</select>
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px">
           <span class="small" style="color:var(--muted)">关联会话（可选）</span>
@@ -535,7 +542,7 @@ async function sendSessionChat(text) {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ message: text, history: state.sessionChatMessages.slice(-11, -1).map((m) => ({ role: m.role, content: m.content })), context: state.data, agentId: state.chatAgentId }),
+      body: JSON.stringify({ message: text, history: state.sessionChatMessages.slice(-11, -1).map((m) => ({ role: m.role, content: m.content })), context: state.data, agentId: state.chatAgentId, model: state.chatModel || undefined }),
     });
     const data = await res.json();
     state.sessionChatMessages = [...state.sessionChatMessages, { role: 'assistant', content: data.content || '抱歉，无法获取回复。', actions: data.actions || [] }];
@@ -745,8 +752,12 @@ async function actionInit() {
   el('section-sessions').addEventListener('change', (e) => {
     if (e.target.id === 'chatAgentSelect') {
       state.chatAgentId = e.target.value || 'main';
+      state.chatModel = '';
       state.sessionChatMessages = [];
       renderSessions();
+    }
+    if (e.target.id === 'chatModelSelect') {
+      state.chatModel = e.target.value;
     }
     if (e.target.id === 'sessionSelect') {
       state.selectedSessionKey = e.target.value || null;

@@ -206,8 +206,9 @@ export async function skillsInstall(slug, agentId) {
   return safeRunOpenClaw(args, { timeoutMs: 60000 });
 }
 
-export async function runAgent(agentId, message) {
+export async function runAgent(agentId, message, model) {
   const args = ['agent', '--message', message, '--agent', agentId || 'main', '--json'];
+  if (model) args.push('--model', model);
   const { stdout, error } = await safeRunOpenClaw(args, { timeoutMs: 60000 });
   if (error) return { text: null, error };
   const data = parseJson(stdout, {});
