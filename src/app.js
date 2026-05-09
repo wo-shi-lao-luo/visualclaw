@@ -15,6 +15,8 @@ const state = {
   agentBindingsLoading: false,
   logLevel: 'all',
   taskFilter: 'all',
+  sessionChatMessages: [],
+  sessionChatLoading: false,
 };
 
 const tabs = [
@@ -185,13 +187,31 @@ function renderDashboard() {
 
 function renderSessions() {
   const sessions = filtered(listOf(state.data?.sessions), state.query);
+  const chatMsgs = state.sessionChatMessages.map((m) => {
+    const isUser = m.role === 'user';
+    const acts = (m.actions || []).map((a) => `<button class="chat-action" data-action-type="${esc(a.type)}" data-action-tab="${esc(a.tab || '')}">${esc(a.label)}</button>`).join('');
+    return `<div class="chat-msg ${isUser ? 'chat-user' : 'chat-assistant'}"><div class="chat-bubble">${esc(m.content)}</div>${acts ? `<div class="chat-actions">${acts}</div>` : ''}</div>`;
+  }).join('') + (state.sessionChatLoading ? '<div class="chat-msg chat-assistant"><div class="chat-bubble chat-loading">思考中…</div></div>' : '');
+
   el('section-sessions').innerHTML = `
-    <div class="card">
-      <div class="toolbar"><h2 style="margin:0">会话</h2><span class="small">${sessions.length} 条</span></div>
-      <div style="height:12px"></div>
-      ${sessions.length ? `<table class="table"><thead><tr><th>Key</th><th>Model</th><th>Age</th><th>Tokens</th><th>Agent</th></tr></thead><tbody>${sessions.map((s) => `<tr><td class="mono">${esc(s.key)}</td><td>${esc(s.model || '-')}</td><td>${fmtMs(s.ageMs)}</td><td>${esc(s.totalTokens ?? s.inputTokens ?? 0)}</td><td>${esc(s.agentId || '-')}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">没有匹配的会话</div>'}
+    <div class="grid-2" style="align-items:start">
+      <div class="card">
+        <div class="toolbar"><h2 style="margin:0">会话</h2><span class="small">${sessions.length} 条</span></div>
+        <div style="height:12px"></div>
+        ${sessions.length ? `<table class="table"><thead><tr><th>Key</th><th>Model</th><th>Age</th><th>Tokens</th><th>Agent</th></tr></thead><tbody>${sessions.map((s) => `<tr><td class="mono small">${esc(s.key)}</td><td>${esc(s.model || '-')}</td><td>${fmtMs(s.ageMs)}</td><td>${esc(s.totalTokens ?? s.inputTokens ?? 0)}</td><td>${esc(s.agentId || '-')}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">没有匹配的会话</div>'}
+      </div>
+      <div class="card" style="display:flex;flex-direction:column">
+        <h2 style="margin:0 0 10px">AI 助手</h2>
+        <div id="sessionChatMessages" class="chat-messages" style="min-height:180px;max-height:420px">${chatMsgs || '<div class="empty" style="font-size:13px">发送消息开始对话</div>'}</div>
+        <div style="display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
+          <input id="sessionChatInput" type="text" placeholder="问点什么…" style="flex:1;min-width:0" autocomplete="off" />
+          <button class="btn primary" id="sessionChatSend">发送</button>
+        </div>
+      </div>
     </div>
   `;
+  const msgEl = document.getElementById('sessionChatMessages');
+  if (msgEl) msgEl.scrollTop = msgEl.scrollHeight;
 }
 
 function renderTaskFlow(t) {
@@ -492,6 +512,27 @@ async function loadSkills() {
   }
 }
 
+async function sendSessionChat(text) {
+  if (!text || state.sessionChatLoading) return;
+  state.sessionChatMessages = [...state.sessionChatMessages, { role: 'user', content: text, actions: [] }];
+  state.sessionChatLoading = true;
+  renderSessions();
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: text, history: state.sessionChatMessages.slice(-11, -1).map((m) => ({ role: m.role, content: m.content })), context: state.data }),
+    });
+    const data = await res.json();
+    state.sessionChatMessages = [...state.sessionChatMessages, { role: 'assistant', content: data.content || '抱歉，无法获取回复。', actions: data.actions || [] }];
+  } catch (err) {
+    state.sessionChatMessages = [...state.sessionChatMessages, { role: 'assistant', content: `失败：${err.message || String(err)}`, actions: [] }];
+  } finally {
+    state.sessionChatLoading = false;
+    renderSessions();
+  }
+}
+
 function render() {
   renderNav();
   renderTop();
@@ -589,14 +630,6 @@ document.querySelectorAll('[data-action]').forEach((btn) => {
 
 actionInit();
 async function actionInit() {
-  tabs.forEach(([key, label]) => {
-    const btn = document.createElement('button');
-    btn.textContent = label;
-    btn.dataset.tab = key;
-    btn.addEventListener('click', () => setTab(key));
-    el('tabs').appendChild(btn);
-  });
-
   el('section-config').addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-cfg-save]');
     if (!btn) return;
@@ -676,6 +709,31 @@ async function actionInit() {
   el('section-logs').addEventListener('click', (e) => {
     const lvlBtn = e.target.closest('[data-log-level]');
     if (lvlBtn) { state.logLevel = lvlBtn.dataset.logLevel; render(); }
+  });
+
+  el('section-sessions').addEventListener('click', (e) => {
+    if (e.target.id === 'sessionChatSend' || e.target.closest('#sessionChatSend')) {
+      const input = document.getElementById('sessionChatInput');
+      const text = (input?.value || '').trim();
+      if (text) { input.value = ''; sendSessionChat(text); }
+      return;
+    }
+    const act = e.target.closest('.chat-action');
+    if (act) {
+      const type = act.dataset.actionType;
+      const tab = act.dataset.actionTab;
+      if (type === 'navigate' && tab) setTab(tab);
+      else if (type === 'refresh') loadData();
+      else if (type === 'restart') document.querySelector('[data-action="restart"]')?.click();
+    }
+  });
+
+  el('section-sessions').addEventListener('keydown', (e) => {
+    if (e.target.id === 'sessionChatInput' && e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const text = e.target.value.trim();
+      if (text) { e.target.value = ''; sendSessionChat(text); }
+    }
   });
 
   el('section-skills').addEventListener('click', async (e) => {
