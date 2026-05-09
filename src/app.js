@@ -192,7 +192,9 @@ function renderSessions() {
   const agents = Array.isArray(state.data?.agents?.agents) ? state.data.agents.agents : [];
   const sel = sessions.find((s) => s.key === state.selectedSessionKey);
   const selStyle = 'background:#0f172a;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font:inherit';
-  const agentOpts = agents.map((a) => `<option value="${esc(a.id)}" ${state.chatAgentId === a.id ? 'selected' : ''}>${esc(a.identityEmoji || '')} ${esc(a.identityName || a.id)}</option>`).join('');
+  const agentOpts = agents.length
+    ? agents.map((a) => `<option value="${esc(a.id)}" ${state.chatAgentId === a.id ? 'selected' : ''}>${esc(a.identityEmoji || '')} ${esc(a.identityName || a.id)}</option>`).join('')
+    : `<option value="main" selected>main</option>`;
   const sessionOpts = sessions.map((s) => `<option value="${esc(s.key)}" ${state.selectedSessionKey === s.key ? 'selected' : ''}>${esc(s.key.slice(0, 24))} · ${esc(s.model || '-')} · ${fmtMs(s.ageMs)}</option>`).join('');
   const chatMsgs = state.sessionChatMessages.map((m) => {
     const isUser = m.role === 'user';
@@ -201,9 +203,15 @@ function renderSessions() {
   }).join('') + (state.sessionChatLoading ? '<div class="chat-msg chat-assistant"><div class="chat-bubble chat-loading">思考中…</div></div>' : '');
   el('section-sessions').innerHTML = `
     <div class="card">
-      <div class="toolbar" style="flex-wrap:wrap;gap:10px">
-        <select id="chatAgentSelect" style="${selStyle}"><option value="main">🤖 主 Agent</option>${agentOpts}</select>
-        <select id="sessionSelect" style="${selStyle};flex:1;min-width:200px"><option value="">— 新对话 —</option>${sessionOpts}</select>
+      <div class="toolbar" style="flex-wrap:wrap;gap:12px;align-items:center">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span class="small" style="color:var(--muted)">对话 Agent</span>
+          <select id="chatAgentSelect" style="${selStyle}">${agentOpts}</select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px">
+          <span class="small" style="color:var(--muted)">关联会话（可选）</span>
+          <select id="sessionSelect" style="${selStyle};width:100%"><option value="">— 不关联会话 —</option>${sessionOpts}</select>
+        </div>
       </div>
     </div>
     <div class="card" style="display:flex;flex-direction:column">
