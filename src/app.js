@@ -188,8 +188,9 @@ function renderDashboard() {
 }
 
 function renderSessions() {
-  const sessions = listOf(state.data?.sessions);
+  const allSessions = listOf(state.data?.sessions);
   const agents = Array.isArray(state.data?.agents?.agents) ? state.data.agents.agents : [];
+  const sessions = allSessions.filter((s) => !s.agentId || s.agentId === state.chatAgentId);
   const sel = sessions.find((s) => s.key === state.selectedSessionKey);
   const selStyle = 'background:#0f172a;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font:inherit';
   const agentOpts = agents.length
