@@ -46,7 +46,6 @@ async function detectEnv() {
 const staticFiles = {
   '/': path.join(__dirname, 'index.html'),
   '/app.js': path.join(__dirname, 'app.js'),
-  '/chat.js': path.join(__dirname, 'chat.js'),
   '/styles.css': path.join(__dirname, 'styles.css'),
 };
 
