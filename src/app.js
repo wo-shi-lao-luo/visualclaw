@@ -17,6 +17,8 @@ const state = {
   taskFilter: 'all',
   sessionChatMessages: [],
   sessionChatLoading: false,
+  chatAgentId: 'main',
+  selectedSessionKey: null,
 };
 
 const tabs = [
@@ -186,29 +188,32 @@ function renderDashboard() {
 }
 
 function renderSessions() {
-  const sessions = filtered(listOf(state.data?.sessions), state.query);
+  const sessions = listOf(state.data?.sessions);
+  const agents = Array.isArray(state.data?.agents?.agents) ? state.data.agents.agents : [];
+  const sel = sessions.find((s) => s.key === state.selectedSessionKey);
+  const selStyle = 'background:#0f172a;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font:inherit';
+  const agentOpts = agents.map((a) => `<option value="${esc(a.id)}" ${state.chatAgentId === a.id ? 'selected' : ''}>${esc(a.identityEmoji || '')} ${esc(a.identityName || a.id)}</option>`).join('');
+  const sessionOpts = sessions.map((s) => `<option value="${esc(s.key)}" ${state.selectedSessionKey === s.key ? 'selected' : ''}>${esc(s.key.slice(0, 24))} · ${esc(s.model || '-')} · ${fmtMs(s.ageMs)}</option>`).join('');
   const chatMsgs = state.sessionChatMessages.map((m) => {
     const isUser = m.role === 'user';
     const acts = (m.actions || []).map((a) => `<button class="chat-action" data-action-type="${esc(a.type)}" data-action-tab="${esc(a.tab || '')}">${esc(a.label)}</button>`).join('');
     return `<div class="chat-msg ${isUser ? 'chat-user' : 'chat-assistant'}"><div class="chat-bubble">${esc(m.content)}</div>${acts ? `<div class="chat-actions">${acts}</div>` : ''}</div>`;
   }).join('') + (state.sessionChatLoading ? '<div class="chat-msg chat-assistant"><div class="chat-bubble chat-loading">思考中…</div></div>' : '');
-
   el('section-sessions').innerHTML = `
-    <div class="grid-2" style="align-items:start">
-      <div class="card">
-        <div class="toolbar"><h2 style="margin:0">会话</h2><span class="small">${sessions.length} 条</span></div>
-        <div style="height:12px"></div>
-        ${sessions.length ? `<table class="table"><thead><tr><th>Key</th><th>Model</th><th>Age</th><th>Tokens</th><th>Agent</th></tr></thead><tbody>${sessions.map((s) => `<tr><td class="mono small">${esc(s.key)}</td><td>${esc(s.model || '-')}</td><td>${fmtMs(s.ageMs)}</td><td>${esc(s.totalTokens ?? s.inputTokens ?? 0)}</td><td>${esc(s.agentId || '-')}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">没有匹配的会话</div>'}
-      </div>
-      <div class="card" style="display:flex;flex-direction:column">
-        <h2 style="margin:0 0 10px">AI 助手</h2>
-        <div id="sessionChatMessages" class="chat-messages" style="min-height:180px;max-height:420px">${chatMsgs || '<div class="empty" style="font-size:13px">发送消息开始对话</div>'}</div>
-        <div style="display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
-          <input id="sessionChatInput" type="text" placeholder="问点什么…" style="flex:1;min-width:0" autocomplete="off" />
-          <button class="btn primary" id="sessionChatSend">发送</button>
-        </div>
+    <div class="card">
+      <div class="toolbar" style="flex-wrap:wrap;gap:10px">
+        <select id="chatAgentSelect" style="${selStyle}"><option value="main">🤖 主 Agent</option>${agentOpts}</select>
+        <select id="sessionSelect" style="${selStyle};flex:1;min-width:200px"><option value="">— 新对话 —</option>${sessionOpts}</select>
       </div>
     </div>
+    <div class="card" style="display:flex;flex-direction:column">
+      <div id="sessionChatMessages" class="chat-messages" style="min-height:300px;max-height:500px">${chatMsgs || '<div class="empty" style="font-size:13px">发送消息开始对话</div>'}</div>
+      <div style="display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
+        <input id="sessionChatInput" type="text" placeholder="问点什么…" style="flex:1;min-width:0" autocomplete="off" />
+        <button class="btn primary" id="sessionChatSend">发送</button>
+      </div>
+    </div>
+    ${sel ? `<div class="card"><h3 style="margin:0 0 8px">会话详情</h3><table class="table"><tr><th>Key</th><td class="mono small">${esc(sel.key)}</td></tr><tr><th>Model</th><td>${esc(sel.model||'-')}</td></tr><tr><th>Age</th><td>${fmtMs(sel.ageMs)}</td></tr><tr><th>Tokens</th><td>${esc(sel.totalTokens??sel.inputTokens??0)}</td></tr><tr><th>Agent</th><td>${esc(sel.agentId||'-')}</td></tr></table></div>` : ''}
   `;
   const msgEl = document.getElementById('sessionChatMessages');
   if (msgEl) msgEl.scrollTop = msgEl.scrollHeight;
@@ -521,7 +526,7 @@ async function sendSessionChat(text) {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ message: text, history: state.sessionChatMessages.slice(-11, -1).map((m) => ({ role: m.role, content: m.content })), context: state.data }),
+      body: JSON.stringify({ message: text, history: state.sessionChatMessages.slice(-11, -1).map((m) => ({ role: m.role, content: m.content })), context: state.data, agentId: state.chatAgentId }),
     });
     const data = await res.json();
     state.sessionChatMessages = [...state.sessionChatMessages, { role: 'assistant', content: data.content || '抱歉，无法获取回复。', actions: data.actions || [] }];
@@ -725,6 +730,18 @@ async function actionInit() {
       if (type === 'navigate' && tab) setTab(tab);
       else if (type === 'refresh') loadData();
       else if (type === 'restart') document.querySelector('[data-action="restart"]')?.click();
+    }
+  });
+
+  el('section-sessions').addEventListener('change', (e) => {
+    if (e.target.id === 'chatAgentSelect') {
+      state.chatAgentId = e.target.value || 'main';
+      state.sessionChatMessages = [];
+      renderSessions();
+    }
+    if (e.target.id === 'sessionSelect') {
+      state.selectedSessionKey = e.target.value || null;
+      renderSessions();
     }
   });
 
